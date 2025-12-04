@@ -10,6 +10,14 @@ from dataset import StreamingTextDataset
 from tqdm import tqdm
 import logging
 
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s | %(levelname)s | %(message)s',
+    handlers=[
+        logging.FileHandler("training.log"),
+        logging.StreamHandler()
+    ]
+)
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 def train():
@@ -45,11 +53,11 @@ def train():
         context_length=config.context_length
     ).to(config.device)
     
-    try:
-        model = torch.compile(model)
-        logging.info("Model compiled successfully.")
-    except Exception as e:
-        logging.warning(f"Could not compile model: {e}")
+    # try:
+    #     model = torch.compile(model)
+    #     logging.info("Model compiled successfully.")
+    # except Exception as e:
+    #     logging.warning(f"Could not compile model: {e}")
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=config.learning_rate)
 

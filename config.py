@@ -3,7 +3,7 @@ import torch
 class GPTConfig:
 
     vocab_size = 50257 
-    block_size = 1024
+    block_size = 256
     n_layers = 12
     n_heads = 12
     d_model = 768
@@ -11,7 +11,7 @@ class GPTConfig:
     dropout = 0.2
     
     # Training Hyperparameters
-    batch_size = 16 #
+    batch_size = 4 #
     learning_rate = 3e-4
     epochs = 3
 
