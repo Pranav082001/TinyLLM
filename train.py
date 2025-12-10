@@ -9,12 +9,14 @@ from model import GPT
 from dataset import StreamingTextDataset
 from tqdm import tqdm
 import logging
+import math
 
+config = GPTConfig()
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s | %(levelname)s | %(message)s',
     handlers=[
-        logging.FileHandler("training.log"),
+        logging.FileHandler(config.logfile_name),
         logging.StreamHandler()
     ]
 )
@@ -27,14 +29,19 @@ def train():
     tokenizer = AutoTokenizer.from_pretrained("openai-community/gpt2")
 
     logging.info(f"Loading {config.dataset_name} ({config.dataset_subset}) in streaming mode...")
-    fw = load_dataset(
-        config.dataset_name,
-        name=config.dataset_subset,
+    # fw = load_dataset(
+    #     config.dataset_name,
+    #     name=config.dataset_subset,
+    #     split="train",
+    #     streaming=True,
+    #     columns=["text"],
+    # )
+    fw= load_dataset(
+        'parquet',
+        data_files='/nethome/prku/pretraining_llm_group1/training_data/fineweb_edu_10B/*.parquet',
         split="train",
-        streaming=True,
-        columns=["text"],
+        streaming=False,
     )
-    
     # # Shuffle and Take 10%
     shuffled_fw = fw.shuffle(seed=42)
     dataset_subset = shuffled_fw.take(config.take_samples)
@@ -63,34 +70,84 @@ def train():
 
     # 7. Training Loop
     model.train()
-    logging.info(f"Starting training on ~{config.take_samples} documents...")
+    logging.info(f"Starting training for {config.epochs} epochs on ~{config.take_samples} documents per epoch...")
     
     step = 0
-    total_loss = 0
     
-    for batch in tqdm(train_loader):
-        inputs = batch["input_ids"].to(config.device)
-        targets = batch["target_ids"].to(config.device)
-
-        logits, loss = model(inputs, targets)
-
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
-        total_loss += loss.item()
-        step += 1
-
-        if step % 10 == 0:
-            logging.info(f"Step {step} | Loss: {loss.item():.4f}")
+    # Outer Epoch Loop
+    for epoch in range(1, config.epochs + 1):
+        logging.info("=" * 60)
+        logging.info(f"--- Starting Epoch {epoch}/{config.epochs} ---")
+        logging.info("=" * 60)
         
-        # Optional: Save periodically
-        if step % 1000 == 0:
-            torch.save(model.state_dict(), config.model_path)
-            logging.info(f"Checkpoint saved at step {step}")
+        total_loss = 0.0
+        
+        # NOTE: Re-create dataset and loader for each epoch to restart the stream
+        train_dataset = StreamingTextDataset(dataset_subset, tokenizer, config.block_size)
+        
+        # DataLoader for IterableDatasets usually requires num_workers=0 or special handling
+        train_loader = DataLoader(train_dataset, batch_size=config.batch_size)
+        
+        # Calculate estimated steps per epoch for the progress bar
+        estimated_steps_per_epoch = config.take_samples // config.batch_size 
+        pbar = tqdm(
+            train_loader, 
+            total=estimated_steps_per_epoch,
+            desc=f"Epoch {epoch}/{config.epochs}", 
+            mininterval=5
+        )
 
-    print(f"Training finished. Final Loss: {loss.item():.4f}")
-    torch.save(model.state_dict(), config.model_path)
+        for batch in pbar:
+            inputs = batch["input_ids"].to(config.device)
+            targets = batch["target_ids"].to(config.device)
+
+            logits, loss = model(inputs, targets)
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            current_loss = loss.item()
+            total_loss += current_loss
+            current_ppl = math.exp(current_loss)
+            step += 1
+            
+            pbar.set_postfix(loss=f"{current_loss:.4f}", ppl=f"{current_ppl:.2f}")
+
+            if step % 10 == 0:
+                logging.info(f"Epoch {epoch} | Step {step} | Loss: {current_loss:.4f}|  PPL: {current_ppl:.2f}")
+            
+            # Optional: Save periodically
+            if step % 1000 == 0:
+                checkpoint_path = f"checkpoint_epoch_{epoch}_step_{step}.pth"
+                # --- Save Model and Optimizer State ---
+                torch.save({
+                    'epoch': epoch,
+                    'step': step,
+                    'model_state_dict': model.state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                    'loss': current_loss,
+                }, checkpoint_path)
+                logging.info(f"Checkpoint saved at step {step} to {checkpoint_path}")
+
+        # Calculate and log average loss for the completed epoch
+        steps_in_epoch = step - (config.epochs - 1) * estimated_steps_per_epoch
+        avg_epoch_loss = total_loss / steps_in_epoch if steps_in_epoch > 0 else 0
+        avg_epoch_ppl = math.exp(avg_epoch_loss)
+        logging.info(f"--- Epoch {epoch} complete. Average Loss: {avg_epoch_loss:.4f}  | Average PPL: {avg_epoch_ppl:.2f} ---")
+
+
+    print(f"Training finished after {config.epochs} epochs.")
+    # --- Final Save Model and Optimizer State ---
+    final_save_data = {
+        'epoch': config.epochs,
+        'step': step,
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'loss': current_loss if 'current_loss' in locals() else None,
+    }
+    torch.save(final_save_data, config.model_path)
+    logging.info(f"Final model and optimizer saved to {config.model_path}")
 
 if __name__ == "__main__":
     train()

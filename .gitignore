@@ -1,1 +1,5 @@
 gpt2_from_scratch.ipynb
+models/
+training.log
+__pycache__/
+baseline_training.log

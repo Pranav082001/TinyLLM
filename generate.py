@@ -12,7 +12,8 @@ def generate_text(model, tokenizer, prompt, max_new_tokens=50, temperature=1.0, 
     """
     Generates text by autocompleting a given prompt.
     """
-    device="cuda:2" if torch.cuda.is_available() else "cpu"
+    config = GPTConfig()
+    device=config.device
 
     model.eval()
     encoded_prompt = tokenizer.encode(prompt, return_tensors='pt').to(device)
@@ -69,8 +70,7 @@ def main():
     config = GPTConfig()
     
     # Check for CUDA device
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    config.device = device
+    device = config.device
     
     logging.info(f"Using device for generation: {config.device}")
 
@@ -92,7 +92,8 @@ def main():
         return
         
     print(f"Loading weights from {config.model_path}...")
-    model.load_state_dict(torch.load(config.model_path, map_location=config.device))
+    checkpoint = torch.load(config.model_path, map_location=config.device)
+    model.load_state_dict(checkpoint['model_state_dict'])
     print("Model weights loaded successfully.")
 
     # --- Run Generation ---
@@ -104,8 +105,7 @@ def main():
         args.prompt, 
         max_new_tokens=args.max_tokens, 
         temperature=args.temp, 
-        top_k=args.top_k, 
-        device=config.device
+        top_k=args.top_k
     )
     
     end_time = time.time()
