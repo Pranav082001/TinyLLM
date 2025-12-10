@@ -51,7 +51,17 @@ def train():
     # DataLoader for IterableDatasets usually requires num_workers=0 or special handling
     train_loader = DataLoader(train_dataset, batch_size=config.batch_size)
     
-    # 6. Initialize Model
+    # --- Calculate Total Tokens ---
+    logging.info("Calculating total tokens in the selected sample...")
+    total_tokens = 0
+
+    for example in tqdm(dataset_subset, desc="Tokenizing Sample"):
+        # The tokenizer's encode method gives the token IDs (list of integers)
+        tokens = tokenizer.encode(example['text'], add_special_tokens=False)
+        total_tokens += len(tokens)
+    
+    logging.info(f"Total tokens in the training sample: {total_tokens:,}")
+    
     model = GPT(
         vocab_size=config.vocab_size,
         d_model=config.d_model,
