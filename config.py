@@ -18,8 +18,8 @@ class GPTConfig:
     dataset_name = "HuggingFaceFW/fineweb-edu"
     dataset_subset = "CC-MAIN-2025-26"
     logfile_name="baseline_training.log"
-    take_samples=10
-    model_path="/nethome/prku/pretraining_llm_group1/TinyLLM/baseline_trained.pth"
+    take_samples=1000
+    model_path="/nethome/prku/pretraining_llm_group1/TinyLLM/models/baseline_trained.pth"
     # System
     device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
 

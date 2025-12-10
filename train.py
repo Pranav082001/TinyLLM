@@ -9,7 +9,7 @@ from model import GPT
 from dataset import StreamingTextDataset
 from tqdm import tqdm
 import logging
-import math,time
+import math,time,glob
 import wandb
 from api_keys import wandb_api
 
@@ -59,8 +59,8 @@ def train():
     #     columns=["text"],
     # )
     fw= load_dataset(
-        'parquet',
-        data_files='/nethome/prku/pretraining_llm_group1/training_data/fineweb_edu_10B/*.parquet',
+        'arrow',
+        data_files={"train":glob.glob('/nethome/prku/pretraining_llm_group1/training_data/fineweb_edu_10B/train/*.arrow')[:3]},
         split="train",
         streaming=False,
     )
@@ -150,17 +150,17 @@ def train():
 
             if wandb.run and step % 10 == 0:
                 wandb.log({
-                    "train/loss": current_loss,
-                    "train/perplexity": current_ppl,
+                    "train/loss": total_loss / step,
+                    "train/perplexity": math.exp(total_loss / step),
                     "epoch": epoch
                 }, step=step)
 
-            if step % 10 == 0:
+            if step % 20 == 0:
                 logging.info(f"Epoch {epoch} | Step {step} | Loss: {current_loss:.4f}|  PPL: {current_ppl:.2f}")
             
             # Optional: Save periodically
-            if step % 1000 == 0:
-                checkpoint_path = f"checkpoint_epoch_{epoch}_step_{step}.pth"
+            if step % 2000 == 0:
+                checkpoint_path = f"/models/checkpoint_epoch_{epoch}_step_{step}.pth"
                 # --- Save Model and Optimizer State ---
                 torch.save({
                     'epoch': epoch,
@@ -168,7 +168,7 @@ def train():
                     'model_state_dict': model.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
                     'loss': current_loss,
-                }, checkpoint_path)
+                }, checkpoint_path,_use_new_zipfile_serialization=False)
                 logging.info(f"Checkpoint saved at step {step} to {checkpoint_path}")
 
         # Calculate and log average loss for the completed epoch
@@ -193,7 +193,7 @@ def train():
         'optimizer_state_dict': optimizer.state_dict(),
         'loss': current_loss if 'current_loss' in locals() else None,
     }
-    torch.save(final_save_data, config.model_path)
+    torch.save(final_save_data, config.model_path,_use_new_zipfile_serialization=False)
     logging.info(f"Final model and optimizer saved to {config.model_path}")
     if wandb.run:
         wandb.finish()
