@@ -9,7 +9,9 @@ from model import GPT
 from dataset import StreamingTextDataset
 from tqdm import tqdm
 import logging
-import math
+import math,time
+import wandb
+from api_keys import wandb_api
 
 config = GPTConfig()
 logging.basicConfig(
@@ -22,9 +24,29 @@ logging.basicConfig(
 )
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
+wandb.login(key=wandb_api)
 def train():
     config = GPTConfig()
     logging.info(f"Using device: {config.device}")
+    try:
+        wandb.init(
+            project="Pretraining_LLM",
+            name=f"run-{time.strftime('%Y%m%d-%H%M%S')}",
+            config={
+                "learning_rate": config.learning_rate,
+                "batch_size": config.batch_size,
+                "epochs": config.epochs,
+                "d_model": config.d_model,
+                "n_layers": config.n_layers,
+                "context_length": config.context_length,
+                "device": config.device,
+                "dataset_source": "fine_web_edu_10T",
+                "sample_size_rows": config.take_samples
+            }
+        )
+        logging.info("Weights and Biases tracking initialized.")
+    except Exception as e:
+        logging.warning(f"Failed to initialize Weights and Biases: {e}")
 
     tokenizer = AutoTokenizer.from_pretrained("openai-community/gpt2")
 
@@ -54,6 +76,8 @@ def train():
     # --- Calculate Total Tokens ---
     logging.info("Calculating total tokens in the selected sample...")
     total_tokens = 0
+    if wandb.run:
+        wandb.config.update({"total_tokens": total_tokens})
 
     for example in tqdm(dataset_subset, desc="Tokenizing Sample"):
         # The tokenizer's encode method gives the token IDs (list of integers)
@@ -124,6 +148,13 @@ def train():
             
             pbar.set_postfix(loss=f"{current_loss:.4f}", ppl=f"{current_ppl:.2f}")
 
+            if wandb.run and step % 10 == 0:
+                wandb.log({
+                    "train/loss": current_loss,
+                    "train/perplexity": current_ppl,
+                    "epoch": epoch
+                }, step=step)
+
             if step % 10 == 0:
                 logging.info(f"Epoch {epoch} | Step {step} | Loss: {current_loss:.4f}|  PPL: {current_ppl:.2f}")
             
@@ -144,6 +175,12 @@ def train():
         steps_in_epoch = step - (config.epochs - 1) * estimated_steps_per_epoch
         avg_epoch_loss = total_loss / steps_in_epoch if steps_in_epoch > 0 else 0
         avg_epoch_ppl = math.exp(avg_epoch_loss)
+        if wandb.run:
+            wandb.log({
+                "epoch_avg/loss": avg_epoch_loss,
+                "epoch_avg/perplexity": avg_epoch_ppl,
+                "epoch": epoch})
+
         logging.info(f"--- Epoch {epoch} complete. Average Loss: {avg_epoch_loss:.4f}  | Average PPL: {avg_epoch_ppl:.2f} ---")
 
 
@@ -158,6 +195,8 @@ def train():
     }
     torch.save(final_save_data, config.model_path)
     logging.info(f"Final model and optimizer saved to {config.model_path}")
+    if wandb.run:
+        wandb.finish()
 
 if __name__ == "__main__":
     train()

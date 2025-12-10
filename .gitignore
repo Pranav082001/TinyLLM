@@ -3,3 +3,4 @@ models/
 training.log
 __pycache__/
 baseline_training.log
+api_keys.py
