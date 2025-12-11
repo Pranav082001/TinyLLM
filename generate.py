@@ -58,18 +58,18 @@ def generate_text(model, tokenizer, prompt, max_new_tokens=50, temperature=1.0, 
     return generated_text
 
 def main():
+
+    config = GPTConfig()
+
     parser = argparse.ArgumentParser(description="Test a custom-trained GPT model for text generation.")
     parser.add_argument("--prompt", type=str, required=True, help="The initial text prompt to complete.")
+    parser.add_argument("--model_path", type=str, default=config.model_path, help="model path.")
     parser.add_argument("--max_tokens", type=int, default=100, help="Maximum number of tokens to generate.")
     parser.add_argument("--temp", type=float, default=0.9, help="Sampling temperature (0.0 for greedy).")
     parser.add_argument("--top_k", type=int, default=50, help="Top-K sampling limit.")
     
     args = parser.parse_args()
 
-    # --- Configuration and Setup ---
-    config = GPTConfig()
-    
-    # Check for CUDA device
     device = config.device
     
     logging.info(f"Using device for generation: {config.device}")
@@ -88,7 +88,7 @@ def main():
 
     # Load the trained weights
     if not os.path.exists(config.model_path):
-        logging.error(f"Model weights not found at {config.model_path}. Please check your config.py and training output.")
+        logging.error(f"Model weights not found at {args.model_path}. Please check your config.py and training output.")
         return
         
     print(f"Loading weights from {config.model_path}...")

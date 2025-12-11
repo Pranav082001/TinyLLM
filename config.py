@@ -11,7 +11,7 @@ class GPTConfig:
     dropout = 0.2
     
     # Training Hyperparameters
-    batch_size = 16 #
+    batch_size = 32 #
     learning_rate = 3e-4
     epochs = 3
 
