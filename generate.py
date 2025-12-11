@@ -8,12 +8,11 @@ import os
 from config import GPTConfig
 from model import GPT
 
-def generate_text(model, tokenizer, prompt, max_new_tokens=50, temperature=1.0, top_k=50):
+def generate_text(model, tokenizer, prompt,device, max_new_tokens=50, temperature=1.0, top_k=50):
     """
     Generates text by autocompleting a given prompt.
     """
     config = GPTConfig()
-    device=config.device
 
     model.eval()
     encoded_prompt = tokenizer.encode(prompt, return_tensors='pt').to(device)
@@ -63,6 +62,7 @@ def main():
 
     parser = argparse.ArgumentParser(description="Test a custom-trained GPT model for text generation.")
     parser.add_argument("--prompt", type=str, required=True, help="The initial text prompt to complete.")
+    parser.add_argument("--device", type=str, required=config.device, help="The initial text prompt to complete.")
     parser.add_argument("--model_path", type=str, default=config.model_path, help="model path.")
     parser.add_argument("--max_tokens", type=int, default=100, help="Maximum number of tokens to generate.")
     parser.add_argument("--temp", type=float, default=0.9, help="Sampling temperature (0.0 for greedy).")
@@ -72,7 +72,7 @@ def main():
 
     device = config.device
     
-    logging.info(f"Using device for generation: {config.device}")
+    logging.info(f"Using device for generation: {args.device}")
 
     # Load tokenizer
     tokenizer = AutoTokenizer.from_pretrained("openai-community/gpt2")
@@ -84,7 +84,7 @@ def main():
         n_heads=config.n_heads,
         n_layers=config.n_layers,
         context_length=config.context_length
-    ).to(config.device)
+    ).to(args.device)
 
     # Load the trained weights
     if not os.path.exists(config.model_path):
@@ -103,6 +103,7 @@ def main():
         model, 
         tokenizer, 
         args.prompt, 
+        device=args.device,
         max_new_tokens=args.max_tokens, 
         temperature=args.temp, 
         top_k=args.top_k
