@@ -70,7 +70,7 @@ def main():
     
     args = parser.parse_args()
 
-    device = config.device
+    device = args.device
     
     logging.info(f"Using device for generation: {args.device}")
 
@@ -87,12 +87,12 @@ def main():
     ).to(args.device)
 
     # Load the trained weights
-    if not os.path.exists(config.model_path):
+    if not os.path.exists(args.model_path):
         logging.error(f"Model weights not found at {args.model_path}. Please check your config.py and training output.")
         return
         
-    print(f"Loading weights from {config.model_path}...")
-    checkpoint = torch.load(config.model_path, map_location=config.device)
+    print(f"Loading weights from {args.model_path}...")
+    checkpoint = torch.load(args.model_path, map_location=args.device)
     model.load_state_dict(checkpoint['model_state_dict'])
     print("Model weights loaded successfully.")
 
