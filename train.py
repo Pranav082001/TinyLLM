@@ -12,6 +12,7 @@ import logging
 import math,time,glob
 import wandb
 from api_keys import wandb_api
+from torch.optim.lr_scheduler import StepLR
 
 config = GPTConfig()
 logging.basicConfig(
@@ -60,7 +61,7 @@ def train():
     # )
     fw= load_dataset(
         'arrow',
-        data_files={"train":glob.glob('/nethome/prku/pretraining_llm_group1/training_data/fineweb_edu_10B/train/*.arrow')[:3]},
+        data_files={"train":glob.glob('/nethome/prku/pretraining_llm_group1/training_data/fineweb_edu_10B/train/*.arrow')[:10]},
         split="train",
         streaming=False,
     )
@@ -101,22 +102,21 @@ def train():
     #     logging.warning(f"Could not compile model: {e}")
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=config.learning_rate)
+    scheduler = StepLR(optimizer, step_size=12000, gamma=0.5)
 
     # 7. Training Loop
     model.train()
     logging.info(f"Starting training for {config.epochs} epochs on ~{config.take_samples} documents per epoch...")
-    
-    step = 0
-    
+        
     # Outer Epoch Loop
     for epoch in range(1, config.epochs + 1):
+        step = 0
         logging.info("=" * 60)
         logging.info(f"--- Starting Epoch {epoch}/{config.epochs} ---")
         logging.info("=" * 60)
         
         total_loss = 0.0
         
-        # NOTE: Re-create dataset and loader for each epoch to restart the stream
         train_dataset = StreamingTextDataset(dataset_subset, tokenizer, config.block_size)
         
         # DataLoader for IterableDatasets usually requires num_workers=0 or special handling
@@ -139,7 +139,10 @@ def train():
 
             optimizer.zero_grad()
             loss.backward()
+
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0) # Clip gradients to prevent spikes
             optimizer.step()
+            scheduler.step()
 
             current_loss = loss.item()
             total_loss += current_loss
@@ -148,19 +151,19 @@ def train():
             
             pbar.set_postfix(loss=f"{current_loss:.4f}", ppl=f"{current_ppl:.2f}")
 
-            if wandb.run and step % 10 == 0:
+            if wandb.run and step % 100 == 0:
                 wandb.log({
                     "train/loss": total_loss / step,
                     "train/perplexity": math.exp(total_loss / step),
                     "epoch": epoch
                 }, step=step)
 
-            if step % 20 == 0:
+            if step % 100 == 0:
                 logging.info(f"Epoch {epoch} | Step {step} | Loss: {current_loss:.4f}|  PPL: {current_ppl:.2f}")
             
             # Optional: Save periodically
-            if step % 2000 == 0:
-                checkpoint_path = f"/models/checkpoint_epoch_{epoch}_step_{step}.pth"
+            if step % 5000 == 0:
+                checkpoint_path = f"/nethome/prku/pretraining_llm_group1/TinyLLM/models/checkpoint_epoch_{epoch}_step_{step}.pth"
                 # --- Save Model and Optimizer State ---
                 torch.save({
                     'epoch': epoch,

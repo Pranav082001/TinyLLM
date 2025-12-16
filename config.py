@@ -12,13 +12,13 @@ class GPTConfig:
     
     # Training Hyperparameters
     batch_size = 16 #
-    learning_rate = 3e-4
-    epochs = 3
+    learning_rate = 6e-5
+    epochs = 1
 
     dataset_name = "HuggingFaceFW/fineweb-edu"
     dataset_subset = "CC-MAIN-2025-26"
     logfile_name="baseline_training.log"
-    take_samples=200000
+    take_samples=700000
     model_path="/nethome/prku/pretraining_llm_group1/TinyLLM/models/baseline_trained.pth"
     # System
     device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
