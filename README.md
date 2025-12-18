@@ -26,7 +26,7 @@ python evaluate_qa_zero_shot.py \
   --output_dir qa_results \
   --device cuda
 
-
+**Generated files**
 qa_results/
 ├── commonsenseqa_predictions.csv
 └── arc_challenge_predictions.csv
