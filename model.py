@@ -1,6 +1,10 @@
 import torch
 import torch.nn as nn
 import math
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import math
 
 class MultiHeadAttention(nn.Module):
     def __init__(self, d_model: int, n_heads: int, dropout: float = 0.2):
@@ -63,70 +67,110 @@ class PositionalEncoding(nn.Module):
         # Slice the PE to the current sequence length of x
         return x + self.pe[:, :x.size(1), :]
 
+import torch
+import torch.nn as nn
+
 class GPTBlock(nn.Module):
-    def __init__(self, d_model, n_heads, dropout=0.2):
+    def __init__(self, d_model, n_heads, dropout):
         super().__init__()
-        self.att = MultiHeadAttention(d_model, n_heads, dropout)
         self.ln1 = nn.LayerNorm(d_model)
+        self.att = MultiHeadAttention(d_model, n_heads, dropout)
         self.ln2 = nn.LayerNorm(d_model)
-        self.dropout = nn.Dropout(dropout)
-        self.fcn = nn.Sequential(
+        self.mlp = nn.Sequential(
             nn.Linear(d_model, 4 * d_model),
             nn.GELU(),
-            nn.Linear(4 * d_model, d_model)
+            nn.Linear(4 * d_model, d_model), # Named c_proj implicitly in init loop
+            nn.Dropout(dropout)
         )
+        # Rename the second linear for the init logic
+        self.mlp[2].label = "c_proj" 
 
-    def forward(self, logits):
-        att_logits = self.att(logits)
-        adn_logits = self.ln1(logits + att_logits)
-        logits = self.dropout(adn_logits)
-        logits = self.fcn(logits)
-        logits = self.ln2(logits + adn_logits)
-        return logits
+    def forward(self, x):
+        # Pre-Norm: Residual stream stays "clean"
+        x = x + self.att(self.ln1(x))
+        x = x + self.mlp(self.ln2(x))
+        return x    
 
 class GPT(nn.Module):
-    def __init__(self, vocab_size, d_model, n_heads, n_layers, context_length):
+    def __init__(self, vocab_size, d_model, n_heads, n_layers, context_length, dropout=0.2):
         super().__init__()
         self.context_length = context_length
-        self.wte = nn.Embedding(vocab_size, d_model) # word token embeddings
-        self.wpe = PositionalEncoding(context_length, d_model) # word position encodings
-        self.blocks = nn.ModuleList([GPTBlock(d_model, n_heads) for _ in range(n_layers)])
-        self.linear1 = nn.Linear(d_model, vocab_size)
+        
+        # 1. Embeddings
+        self.wte = nn.Embedding(vocab_size, d_model)
+        self.wpe = nn.Embedding(context_length, d_model) # Switched to Embedding for better learning
+        self.dropout = nn.Dropout(dropout)
+        
+        # 2. Transformer Blocks (Pre-Norm)
+        self.blocks = nn.ModuleList([GPTBlock(d_model, n_heads, dropout) for _ in range(n_layers)])
+        
+        # 3. Final LayerNorm (CRITICAL for Pre-Norm Architecture)
+        self.ln_f = nn.LayerNorm(d_model)
+        
+        # 4. Output Head
+        self.linear1 = nn.Linear(d_model, vocab_size, bias=False)
 
-        # Weight tying (optional but standard in GPT)
+        # Weight tying
         self.wte.weight = self.linear1.weight
 
+        # Initialize weights
+        self.apply(self._init_weights)
+        
+        # Special scaling for residual projections
+        for pn, p in self.named_parameters():
+            if pn.endswith('c_proj.weight'):
+                # Note: using n_layers here
+                torch.nn.init.normal_(p, mean=0.0, std=0.02/math.sqrt(2 * n_layers))
+
+    def _init_weights(self, module):
+        if isinstance(module, nn.Linear):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias)
+        elif isinstance(module, nn.Embedding):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+
     def forward(self, inputs, targets=None):
-        logits = self.wte(inputs)  # dim -> batch_size, sequence_length, d_model
-        logits = self.wpe(logits)
+        device = inputs.device
+        b, t = inputs.size()
         
+        # Generate position indices
+        pos = torch.arange(0, t, dtype=torch.long, device=device)
+        
+        # Token + Position Embeddings
+        tok_emb = self.wte(inputs)
+        pos_emb = self.wpe(pos)
+        x = self.dropout(tok_emb + pos_emb)
+        
+        # Pass through blocks
         for block in self.blocks:
-            logits = block(logits)
+            x = block(x)
             
-        logits = self.linear1(logits)
+        # Apply final LayerNorm before the head
+        x = self.ln_f(x)
         
-        loss = None
         if targets is not None:
-            batch_size, sequence_length, d_model = logits.shape
-            logits_reshaped = logits.view(batch_size * sequence_length, -1) # d_model is vocab_size here
-            targets_reshaped = targets.view(batch_size * sequence_length)
-            loss = torch.nn.functional.cross_entropy(logits_reshaped, targets_reshaped)
+            logits = self.linear1(x)
+            # SMART LOSS: Shift targets to predict the next token
+            # Logits from [0...T-1] predict Targets [1...T]
+            shift_logits = logits[:, :-1, :].contiguous()
+            shift_labels = targets[:, 1:].contiguous()
+            loss = F.cross_entropy(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+        else:
+            # Inference optimization: only calculate the last logit
+            logits = self.linear1(x[:, [-1], :]) 
+            loss = None
             
         return logits, loss
-    
+
     @torch.no_grad()
     def generate(self, inputs, max_new_tokens):
-        # inputs: (Batch, Seq_Len)
         for _ in range(max_new_tokens):
-            # Crop to context length if needed
             cond_inputs = inputs[:, -self.context_length:]
-            
             logits, _ = self(cond_inputs)
-            # Take last token logits
+            # forward already returns only the last logit if targets=None
             logits = logits[:, -1, :] 
-            probs = torch.softmax(logits, dim=1)            
-            
+            probs = torch.softmax(logits, dim=-1)            
             idx_next = torch.multinomial(probs, num_samples=1) 
             inputs = torch.cat([inputs, idx_next], dim=1)
-            
         return inputs

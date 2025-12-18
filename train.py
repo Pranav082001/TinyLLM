@@ -61,7 +61,7 @@ def train():
     # )
     fw= load_dataset(
         'arrow',
-        data_files={"train":glob.glob('/nethome/prku/pretraining_llm_group1/training_data/fineweb_edu_10B/train/*.arrow')[:10]},
+        data_files={"train":glob.glob('/scratch/prku/training_data/fineweb_edu_10B/train/*.arrow')[:5]},
         split="train",
         streaming=False,
     )
@@ -72,7 +72,6 @@ def train():
     train_dataset = StreamingTextDataset(fw, tokenizer, config.block_size)
     
     # DataLoader for IterableDatasets usually requires num_workers=0 or special handling
-    train_loader = DataLoader(train_dataset, batch_size=config.batch_size)
     
     # --- Calculate Total Tokens ---
     logging.info("Calculating total tokens in the selected sample...")
@@ -80,11 +79,14 @@ def train():
     if wandb.run:
         wandb.config.update({"total_tokens": total_tokens})
 
-    for example in tqdm(dataset_subset, desc="Tokenizing Sample"):
-        # The tokenizer's encode method gives the token IDs (list of integers)
-        tokens = tokenizer.encode(example['text'], add_special_tokens=False)
-        total_tokens += len(tokens)
-    
+    token_counts = dataset_subset.map(
+        lambda x: {"len": [len(t) for t in tokenizer(x["text"], add_special_tokens=False)["input_ids"]]},
+        batched=True,
+        num_proc=os.cpu_count(), # Uses all available CPU cores
+        remove_columns=dataset_subset.column_names # Drop text to save RAM
+    )
+    # 2. Sum the resulting list
+    total_tokens = sum(token_counts["len"])    
     logging.info(f"Total tokens in the training sample: {total_tokens:,}")
     
     model = GPT(
@@ -101,8 +103,8 @@ def train():
     # except Exception as e:
     #     logging.warning(f"Could not compile model: {e}")
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=config.learning_rate)
-    scheduler = StepLR(optimizer, step_size=12000, gamma=0.5)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=config.learning_rate,weight_decay=0.1)
+    scheduler = StepLR(optimizer, step_size=5000, gamma=0.5)
 
     # 7. Training Loop
     model.train()
@@ -163,7 +165,7 @@ def train():
             
             # Optional: Save periodically
             if step % 5000 == 0:
-                checkpoint_path = f"/nethome/prku/pretraining_llm_group1/TinyLLM/models/checkpoint_epoch_{epoch}_step_{step}.pth"
+                checkpoint_path = f"/scratch/prku/models/test/checkpoint_epoch_{epoch}_step_{step}.pth"
                 # --- Save Model and Optimizer State ---
                 torch.save({
                     'epoch': epoch,
