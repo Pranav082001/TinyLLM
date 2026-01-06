@@ -1,8 +1,5 @@
 import torch
-from torch.utils.data import Dataset
-
-import torch
-from torch.utils.data import IterableDataset
+from torch.utils.data import IterableDataset,Dataset
 
 class StreamingTextDataset(IterableDataset):
     def __init__(self, hf_dataset, tokenizer, block_size):

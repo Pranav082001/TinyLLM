@@ -1,176 +1,117 @@
-import torch
+from transformers import AutoTokenizer, AutoModelForCausalLM
+from torch.nn import functional as F
+import torch 
 import torch.nn as nn
 import math
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import math
-
-class MultiHeadAttention(nn.Module):
-    def __init__(self, d_model: int, n_heads: int, dropout: float = 0.2):
-        super().__init__()
-        self.n_heads = n_heads
-        self.head_dim = d_model // n_heads
-        assert (n_heads * self.head_dim == d_model)
-
-        self.query = nn.Linear(d_model, d_model)
-        self.key = nn.Linear(d_model, d_model)
-        self.value = nn.Linear(d_model, d_model)
-        self.fc_out = nn.Linear(d_model, d_model)
-        self.dropout = nn.Dropout(dropout)
-
-    def forward(self, inputs: torch.Tensor):
-        B, seq_length, d_model = inputs.shape
-
-        # Scaled Dot-Product Attention
-        Q = self.query(inputs).view(B, seq_length, self.n_heads, self.head_dim).permute(0, 2, 1, 3)
-        K = self.key(inputs).view(B, seq_length, self.n_heads, self.head_dim).permute(0, 2, 1, 3)
-        V = self.value(inputs).view(B, seq_length, self.n_heads, self.head_dim).permute(0, 2, 1, 3)
-        
-        # Scaled Dot-Product Attention
-        attention_scores = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(self.head_dim)
-
-        # Applying mask to prevent attention to future tokens
-        mask = torch.triu(torch.ones(seq_length, seq_length), diagonal=1).bool().to(inputs.device)
-        attention_scores = attention_scores.masked_fill(mask, float('-inf'))
-        
-        attention_weights = torch.softmax(attention_scores, dim=-1)
-        attention_output = torch.matmul(self.dropout(attention_weights), V)
-
-        # Concatenating heads and put them back to the original shape
-        attention_output = attention_output.permute(0, 2, 1, 3).contiguous()
-        attention_output = attention_output.view(B, seq_length, d_model)
-
-        out = self.fc_out(attention_output)
-        return out
-
-class PositionalEncoding(nn.Module):
-    def __init__(self, context_length, d_model):
-        super().__init__()
-
-        #matrix of shape (context_length, d_model) to store the positional encodings
-        pe = torch.zeros(context_length, d_model)
-
-        #vector with positions [0, 1, 2, ..., context_length-1] of shape (context_length, 1)
-        position = torch.arange(0, context_length, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
-        
-        pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term)
-        
-        pe = pe.unsqueeze(0) # Shape: (1, context_length, d_model)
-
-        self.register_buffer('pe', pe)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-
-        # Slice the PE to the current sequence length of x
-        return x + self.pe[:, :x.size(1), :]
-
-import torch
-import torch.nn as nn
-
-class GPTBlock(nn.Module):
-    def __init__(self, d_model, n_heads, dropout):
-        super().__init__()
-        self.ln1 = nn.LayerNorm(d_model)
-        self.att = MultiHeadAttention(d_model, n_heads, dropout)
-        self.ln2 = nn.LayerNorm(d_model)
-        self.mlp = nn.Sequential(
-            nn.Linear(d_model, 4 * d_model),
-            nn.GELU(),
-            nn.Linear(4 * d_model, d_model), # Named c_proj implicitly in init loop
-            nn.Dropout(dropout)
-        )
-        # Rename the second linear for the init logic
-        self.mlp[2].label = "c_proj" 
-
-    def forward(self, x):
-        # Pre-Norm: Residual stream stays "clean"
-        x = x + self.att(self.ln1(x))
-        x = x + self.mlp(self.ln2(x))
-        return x    
+from torch.nn import functional as F
 
 class GPT(nn.Module):
-    def __init__(self, vocab_size, d_model, n_heads, n_layers, context_length, dropout=0.2):
+    def __init__(self, config):
         super().__init__()
-        self.context_length = context_length
-        
-        # 1. Embeddings
-        self.wte = nn.Embedding(vocab_size, d_model)
-        self.wpe = nn.Embedding(context_length, d_model) # Switched to Embedding for better learning
-        self.dropout = nn.Dropout(dropout)
-        
-        # 2. Transformer Blocks (Pre-Norm)
-        self.blocks = nn.ModuleList([GPTBlock(d_model, n_heads, dropout) for _ in range(n_layers)])
-        
-        # 3. Final LayerNorm (CRITICAL for Pre-Norm Architecture)
-        self.ln_f = nn.LayerNorm(d_model)
-        
-        # 4. Output Head
-        self.linear1 = nn.Linear(d_model, vocab_size, bias=False)
+        self.config=config
 
-        # Weight tying
-        self.wte.weight = self.linear1.weight
+        self.transformer = nn.ModuleDict(dict(
+            wte = nn.Embedding(config.vocab_size, config.n_embed),
+            wpe = nn.Embedding(config.block_size, config.n_embed),
+            h = nn.ModuleList([Block(config) for _ in range(config.n_layers)]),
+            ln_f = nn.LayerNorm(config.n_embed),
+        ))
 
-        # Initialize weights
-        self.apply(self._init_weights)
-        
-        # Special scaling for residual projections
-        for pn, p in self.named_parameters():
-            if pn.endswith('c_proj.weight'):
-                # Note: using n_layers here
-                torch.nn.init.normal_(p, mean=0.0, std=0.02/math.sqrt(2 * n_layers))
+        self.lm_head = nn.Linear(config.n_embed, config.vocab_size, bias=False)
 
-    def _init_weights(self, module):
-        if isinstance(module, nn.Linear):
-            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
-            if module.bias is not None:
-                torch.nn.init.zeros_(module.bias)
-        elif isinstance(module, nn.Embedding):
-            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+    def forward(self, idx, targets=None):
+        # idx is of shape (B, T)
+        B, T = idx.size()
 
-    def forward(self, inputs, targets=None):
-        device = inputs.device
-        b, t = inputs.size()
-        
-        # Generate position indices
-        pos = torch.arange(0, t, dtype=torch.long, device=device)
-        
-        # Token + Position Embeddings
-        tok_emb = self.wte(inputs)
-        pos_emb = self.wpe(pos)
-        x = self.dropout(tok_emb + pos_emb)
-        
-        # Pass through blocks
-        for block in self.blocks:
+        pos = torch.arange(0, T, dtype=torch.long, device=idx.device) # shape (T)
+        pos_emb = self.transformer.wpe(pos) # position embeddings of shape (T, n_embd)
+        tok_emb = self.transformer.wte(idx) # token embeddings of shape (B, T, n_embd)
+        x = tok_emb + pos_emb
+
+        # forward pass in block 
+        for block in self.transformer.h:
             x = block(x)
-            
-        # Apply final LayerNorm before the head
-        x = self.ln_f(x)
-        
+
+        x = self.transformer.ln_f(x)
+        logits = self.lm_head(x) # (B, T, vocab_size)
+        loss = None
+
         if targets is not None:
-            logits = self.linear1(x)
-            # SMART LOSS: Shift targets to predict the next token
-            # Logits from [0...T-1] predict Targets [1...T]
-            shift_logits = logits[:, :-1, :].contiguous()
-            shift_labels = targets[:, 1:].contiguous()
-            loss = F.cross_entropy(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
-        else:
-            # Inference optimization: only calculate the last logit
-            logits = self.linear1(x[:, [-1], :]) 
-            loss = None
+            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1))
             
         return logits, loss
+    
 
-    @torch.no_grad()
-    def generate(self, inputs, max_new_tokens):
-        for _ in range(max_new_tokens):
-            cond_inputs = inputs[:, -self.context_length:]
-            logits, _ = self(cond_inputs)
-            # forward already returns only the last logit if targets=None
-            logits = logits[:, -1, :] 
-            probs = torch.softmax(logits, dim=-1)            
-            idx_next = torch.multinomial(probs, num_samples=1) 
-            inputs = torch.cat([inputs, idx_next], dim=1)
-        return inputs
+class Block(nn.Module):
+    def __init__(self,config):
+
+        super().__init__()
+        self.ln_1=nn.LayerNorm(config.n_embed)
+        self.attn=MultiHeadAttention(config)
+        self.ln_2=nn.LayerNorm(config.n_embed)
+        self.mlp=MLP(config)
+
+    def forward(self,x):
+        x = x + self.attn(self.ln_1(x))
+        x = x + self.mlp(self.ln_2(x))
+
+        return x
+    
+
+class MLP( nn.Module):
+    def __init__(self,config):
+        super().__init__()
+        self.c_fc = nn.Linear(config.n_embed, 4*config.n_embed)
+        self.gelu = nn.GELU(approximate='tanh') #approximate gelu is faster, also used in original gpt2
+        self.c_proj = nn.Linear( 4*config.n_embed, config.n_embed)
+        
+    def forward  (self,x):
+        x=self.c_fc(x)
+        x=self.gelu(x)
+        x=self.c_proj(x)
+
+        return x
+
+
+class Head(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        head_size = config.n_embed // config.n_head
+        # GPT-2 uses biases in these layers
+        self.query = nn.Linear(config.n_embed, head_size, bias=True)
+        self.key   = nn.Linear(config.n_embed, head_size, bias=True)
+        self.value = nn.Linear(config.n_embed, head_size, bias=True)
+        
+        self.register_buffer('tril', torch.tril(torch.ones(config.block_size, config.block_size)))
+        self.dropout = nn.Dropout(config.dropout)
+
+    def forward(self, x):
+        B, T, C = x.shape
+        k = self.key(x)   # (B, T, head_size)
+        q = self.query(x) # (B, T, head_size)
+        
+        # Compute attention scores
+        # (B, T, head_size) @ (B, head_size, T) -> (B, T, T)
+        wei = q @ k.transpose(-2, -1) * (k.shape[-1]**-0.5)
+        wei = wei.masked_fill(self.tril[:T, :T] == 0, float('-inf'))
+        wei = F.softmax(wei, dim=-1)
+        wei = self.dropout(wei)
+        
+        v = self.value(x) # (B, T, head_size)
+        out = wei @ v     # (B, T, head_size)
+        return out
+
+class MultiHeadAttention(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.heads = nn.ModuleList([Head(config) for _ in range(config.n_head)])
+        # The projection layer back to n_embed
+        self.c_proj = nn.Linear(config.n_embed, config.n_embed)
+        self.dropout = nn.Dropout(config.dropout)
+
+    def forward(self, x):
+        # Concatenate all head outputs
+        out = torch.cat([h(x) for h in self.heads], dim=-1)
+        out = self.dropout(self.c_proj(out))
+        return out
+        

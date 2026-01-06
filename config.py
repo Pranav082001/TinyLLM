@@ -2,26 +2,26 @@ import torch
 
 class GPTConfig:
 
-    vocab_size = 50257 
-    block_size = 256
-    n_layers = 12
-    n_heads = 12
-    d_model = 768
-    context_length = 1024
-    dropout = 0.2
+    block_size=1024  # max sequence length 
+    vocab_size=50257
+    n_layers=12
+    n_head=12
+    n_embed=768
+    dropout=0.2
     
     # Training Hyperparameters
     batch_size = 16 #
     learning_rate = 6e-4
     epochs = 1
-
+    wandb=True
+    
     dataset_name = "HuggingFaceFW/fineweb-edu"
     dataset_subset = "CC-MAIN-2025-26"
     logfile_name="baseline_training.log"
     take_samples=100000
     model_path="/scratch/prku/models/test/baseline_trained.pth"
     # System
-    device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
 
 
 #LOcal Config
