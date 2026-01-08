@@ -23,7 +23,7 @@ class GPT(nn.Module):
         # idx is of shape (B, T)
         B, T = idx.size()
 
-        pos = torch.arange(0, T, dtype=torch.long, device=idx.device) # shape (T)
+        pos = torch.arange(0, T, dtype=torch.long, device=self.config.device) # shape (T)
         pos_emb = self.transformer.wpe(pos) # position embeddings of shape (T, n_embd)
         tok_emb = self.transformer.wte(idx) # token embeddings of shape (B, T, n_embd)
         x = tok_emb + pos_emb
@@ -72,7 +72,7 @@ class MLP( nn.Module):
 
         return x
 
-
+'''
 class Head(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -115,3 +115,39 @@ class MultiHeadAttention(nn.Module):
         out = self.dropout(self.c_proj(out))
         return out
         
+'''
+
+class MultiHeadAttention(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        assert config.n_embed % config.n_head == 0
+        # Key, Query, Value projections for all heads, but in a batch
+        self.c_attn = nn.Linear(config.n_embed, 3 * config.n_embed)
+        # Output projection
+        self.c_proj = nn.Linear(config.n_embed, config.n_embed)
+        # Regularization
+        self.n_head = config.n_head
+        self.n_embed = config.n_embed
+        # Flash Attention or Masking
+        self.register_buffer("bias", torch.tril(torch.ones(config.block_size, config.block_size))
+                                     .view(1, 1, config.block_size, config.block_size))
+
+    def forward(self, x):
+        B, T, C = x.size() # batch size, sequence length, embedding dimensionality (n_embed)
+
+        # calculate query, key, values for all heads in batch and move head forward to be the batch dim
+        q, k, v  = self.c_attn(x).split(self.n_embed, dim=2)
+        k = k.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
+        q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
+        v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
+
+        # causal self-attention; Self-attend: (B, nh, T, hs) x (B, nh, hs, T) -> (B, nh, T, T)
+        att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
+        att = att.masked_fill(self.bias[:,:,:T,:T] == 0, float('-inf'))
+        att = F.softmax(att, dim=-1)
+        y = att @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
+        y = y.transpose(1, 2).contiguous().view(B, T, C) # re-assemble all head outputs side by side
+
+        # output projection
+        y = self.c_proj(y)
+        return y

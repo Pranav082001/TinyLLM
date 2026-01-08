@@ -10,19 +10,19 @@ class GPTConfig:
     dropout=0.2
     
     # Training Hyperparameters
-    batch_size = 16 #
-    learning_rate = 6e-4
+    batch_size = 4 #
+    learning_rate = 3e-4
     epochs = 1
     wandb=True
     
     dataset_name = "HuggingFaceFW/fineweb-edu"
     dataset_subset = "CC-MAIN-2025-26"
     logfile_name="baseline_training.log"
-    take_samples=100000
-    model_path="/scratch/prku/models/test/baseline_trained.pth"
+    take_samples=200
+    model_path="/scratch/prku/models/update1/baseline_trained.pth"
     # System
-    device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
-
+    device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+   
 
 #LOcal Config
 

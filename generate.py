@@ -21,7 +21,7 @@ def generate_text(model, tokenizer, prompt,device, max_new_tokens=50, temperatur
     with torch.no_grad():
         for _ in range(max_new_tokens):
             # Crop the context to the model's max context length
-            input_context = generated_ids[:, -1024:]
+            input_context = generated_ids[:, -config.block_size:]
 
             # Forward pass to get logits for the next token
             logits, _ = model(input_context)

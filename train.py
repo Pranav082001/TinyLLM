@@ -35,7 +35,17 @@ def train():
         wandb.init(
             project="Pretraining_LLM",
             name=f"run-{time.strftime('%Y%m%d-%H%M%S')}",
-            config=config.__dict__
+            config={
+                "learning_rate": config.learning_rate,
+                "batch_size": config.batch_size,
+                "epochs": config.epochs,
+                "d_model": config.n_embed,
+                "n_layers": config.n_layers,
+                "context_length": config.block_size,
+                "device": config.device,
+                "dataset_source": "fine_web_edu_10T",
+                "sample_size_rows": config.take_samples
+            }
         )
         logging.info("Weights and Biases tracking initialized.")
     except Exception as e:
@@ -74,15 +84,10 @@ def train():
 
     logging.info(f"Total tokens in the training sample: {total_tokens:,}")
     
-    model = GPT(
-        vocab_size=config.vocab_size,
-        d_model=config.d_model,
-        n_heads=config.n_heads,
-        n_layers=config.n_layers,
-        context_length=config.block_size
-    ).to(config.device)
-    
-    optimizer = torch.optim.AdamW(model.parameters(), lr=config.learning_rate,weight_decay=0.1)
+    model = GPT(config)
+    model=model.to(config.device)    
+    optimizer = torch.optim.AdamW(model.parameters(), lr=config.learning_rate,weight_decay=0.2)
+    scheduler = StepLR(optimizer, step_size=5000, gamma=0.5)
 
     # 7. Training Loop
     model.train()
@@ -107,6 +112,7 @@ def train():
 
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0) # Clip gradients to prevent spikes
             optimizer.step()
+            scheduler.step()
 
             current_loss = loss.item()
             total_loss += current_loss
@@ -129,11 +135,11 @@ def train():
             # Optional: Save periodically
             
             if step % 5000 == 0:
-                new_checkpoint_path = f"/scratch/prku/models/test/checkpoint_epoch_{epoch}_step_{step}.pth"
+                new_checkpoint_path = f"/scratch/prku/models/update1/checkpoint_epoch_{epoch}_step_{step}.pth"
                 torch.save({
                     'epoch': epoch,
                     'step': step,
-                    'model_state_dict': model.state_dict(),
+                    'model': model,
                     'optimizer_state_dict': optimizer.state_dict(),
                     'loss': current_loss,
                 }, new_checkpoint_path,_use_new_zipfile_serialization=False)
@@ -169,7 +175,7 @@ def train():
     final_save_data = {
         'epoch': config.epochs,
         'step': step,
-        'model_state_dict': model.state_dict(),
+        'model': model,
         'optimizer_state_dict': optimizer.state_dict(),
         'loss': current_loss if 'current_loss' in locals() else None,
     }
