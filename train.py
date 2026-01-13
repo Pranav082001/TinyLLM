@@ -27,7 +27,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 torch.manual_seed(42)
 if torch.cuda.is_available():
     torch.cuda.manual_seed(42)
-    
+
 wandb.login(key=wandb_api)
 
 def train():
@@ -184,9 +184,12 @@ def train():
 
     commonsense,arc_challenge=evaluate(final_model_path,config.device)
     wandb.log({
-                    "CommonsenseQA accuracy": commonsense,
-                    "ARC Challenge accuracy": arc_challenge})
+                    "CommonsenseQA accuracy": commonsense* 100,
+                    "ARC Challenge accuracy": arc_challenge* 100})
     
+    print(f"CommonsenseQA accuracy : {commonsense * 100:.2f}%")
+    print(f"ARC Challenge accuracy : {arc_challenge * 100:.2f}%")
+
     if wandb.run:
         wandb.finish()
 
