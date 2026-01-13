@@ -13,20 +13,19 @@ import math,time,glob
 import wandb
 from api_keys import wandb_api
 from torch.optim.lr_scheduler import StepLR
+from evaluate import evaluate
 
 config = GPTConfig()
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s | %(levelname)s | %(message)s',
     handlers=[
-        logging.FileHandler(config.logfile_name),
         logging.StreamHandler()
     ]
 )
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-if config.wandb:
-    wandb.login(key=wandb_api)
+wandb.login(key=wandb_api)
 
 def train():
     config = GPTConfig()
@@ -44,7 +43,7 @@ def train():
                 "context_length": config.block_size,
                 "device": config.device,
                 "dataset_source": "fine_web_edu_10T",
-                "sample_size_rows": config.take_samples
+                "num_of_rows": config.take_samples
             }
         )
         logging.info("Weights and Biases tracking initialized.")
@@ -76,18 +75,16 @@ def train():
         num_proc=os.cpu_count(), # Uses all available CPU cores
         remove_columns=dataset_subset.column_names # Drop text to save RAM
     )
-    # 2. Sum the resulting list
     total_tokens = sum(token_counts["len"])    
-    if config.wandb:
-        if wandb.run:
+    if wandb.run:
             wandb.config.update({"total_tokens": total_tokens})
 
     logging.info(f"Total tokens in the training sample: {total_tokens:,}")
     
     model = GPT(config)
     model=model.to(config.device)    
-    optimizer = torch.optim.AdamW(model.parameters(), lr=config.learning_rate,weight_decay=0.2)
-    scheduler = StepLR(optimizer, step_size=5000, gamma=0.5)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=config.learning_rate)
+    # scheduler = StepLR(optimizer, step_size=5000, gamma=0.5)
 
     # 7. Training Loop
     model.train()
@@ -112,7 +109,7 @@ def train():
 
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0) # Clip gradients to prevent spikes
             optimizer.step()
-            scheduler.step()
+            # scheduler.step()
 
             current_loss = loss.item()
             total_loss += current_loss
@@ -121,8 +118,7 @@ def train():
             
             pbar.set_postfix(loss=f"{current_loss:.4f}", ppl=f"{current_ppl:.2f}")
 
-            if config.wandb:
-                if wandb.run and step % 100 == 0:
+            if wandb.run and step % 100 == 0:
                     wandb.log({
                         "train/loss": total_loss / step,
                         "train/perplexity": math.exp(total_loss / step),
@@ -135,7 +131,7 @@ def train():
             # Optional: Save periodically
             
             if step % 5000 == 0:
-                new_checkpoint_path = f"/scratch/prku/models/update1/checkpoint_epoch_{epoch}_step_{step}.pth"
+                new_checkpoint_path = config.model_path+f"/checkpoint_epoch_{epoch}_step_{step}.pth"
                 torch.save({
                     'epoch': epoch,
                     'step': step,
@@ -160,8 +156,7 @@ def train():
         steps_in_epoch = step - (config.epochs - 1) * estimated_steps_per_epoch
         avg_epoch_loss = total_loss / steps_in_epoch if steps_in_epoch > 0 else 0
         avg_epoch_ppl = math.exp(avg_epoch_loss)
-        if config.wandb:
-            if wandb.run:
+        if wandb.run:
                 wandb.log({
                     "epoch_avg/loss": avg_epoch_loss,
                     "epoch_avg/perplexity": avg_epoch_ppl,
@@ -178,13 +173,19 @@ def train():
         'model': model,
         'optimizer_state_dict': optimizer.state_dict(),
         'loss': current_loss if 'current_loss' in locals() else None,
+        'config': GPTConfig()
     }
-    torch.save(final_save_data, config.model_path,_use_new_zipfile_serialization=False)
+    final_model_path=os.path.join(config.model_path,"completed_train.pth")
+    torch.save(final_save_data, final_model_path,_use_new_zipfile_serialization=False)
     logging.info(f"Final model and optimizer saved to {config.model_path}")
 
-    if config.wandb:
-        if wandb.run:
-            wandb.finish()
+    commonsense,arc_challenge=evaluate(final_model_path,config.device)
+    wandb.log({
+                    "CommonsenseQA accuracy": commonsense,
+                    "ARC Challenge accuracy": arc_challenge})
+    
+    if wandb.run:
+        wandb.finish()
 
 if __name__ == "__main__":
     train()

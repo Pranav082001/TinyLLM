@@ -2,7 +2,7 @@ import torch
 
 class GPTConfig:
 
-    block_size=1024  # max sequence length 
+    block_size=512  # max sequence length 
     vocab_size=50257
     n_layers=12
     n_head=12
@@ -13,13 +13,11 @@ class GPTConfig:
     batch_size = 4 #
     learning_rate = 3e-4
     epochs = 1
-    wandb=True
     
     dataset_name = "HuggingFaceFW/fineweb-edu"
     dataset_subset = "CC-MAIN-2025-26"
-    logfile_name="baseline_training.log"
-    take_samples=200
-    model_path="/scratch/prku/models/update1/baseline_trained.pth"
+    take_samples=10000
+    model_path="/scratch/prku/models/hyperparameter_tuning/baseline"
     # System
     device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
    

@@ -4,3 +4,4 @@ training.log
 __pycache__/
 baseline_training.log
 api_keys.py
+qa_results/
