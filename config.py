@@ -1,4 +1,5 @@
 import torch
+import os
 
 class GPTConfig:
 
@@ -10,14 +11,18 @@ class GPTConfig:
     dropout=0.2
     
     # Training Hyperparameters
-    batch_size = 4 #
+    batch_size = 16 #
     learning_rate = 3e-4
     epochs = 1
     
     dataset_name = "HuggingFaceFW/fineweb-edu"
     dataset_subset = "CC-MAIN-2025-26"
-    take_samples=10000
-    model_path="/scratch/prku/models/hyperparameter_tuning/baseline"
+    take_samples=100000
+    model_path="/scratch/prku/models/hyperparameter_tuning/baseline_512"
+    if os.path.isdir(model_path):
+        pass
+    else :
+        os.mkdir(model_path)
     # System
     device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
    

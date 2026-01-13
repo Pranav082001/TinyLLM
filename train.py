@@ -24,7 +24,10 @@ logging.basicConfig(
     ]
 )
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
-
+torch.manual_seed(42)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed(42)
+    
 wandb.login(key=wandb_api)
 
 def train():
