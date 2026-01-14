@@ -12,7 +12,7 @@ import logging
 import math,time,glob
 import wandb
 from api_keys import wandb_api
-from torch.optim.lr_scheduler import StepLR
+from torch.optim.lr_scheduler import StepLR,CosineAnnealingLR
 from evaluate import evaluate
 
 config = GPTConfig()
@@ -88,7 +88,7 @@ def train():
     model=model.to(config.device)    
     optimizer = torch.optim.AdamW(model.parameters(), lr=config.learning_rate)
     # scheduler = StepLR(optimizer, step_size=5000, gamma=0.5)
-
+    scheduler=CosineAnnealingLR(optimizer, T_max=1, eta_min=1e-7)
     # 7. Training Loop
     model.train()
     logging.info(f"Starting training for {config.epochs} epochs on ~{config.take_samples} documents per epoch...")
@@ -113,6 +113,7 @@ def train():
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0) # Clip gradients to prevent spikes
             optimizer.step()
             # scheduler.step()
+            scheduler.step()
 
             current_loss = loss.item()
             total_loss += current_loss
@@ -185,7 +186,8 @@ def train():
     commonsense,arc_challenge=evaluate(final_model_path,config.device)
     wandb.log({
                     "CommonsenseQA accuracy": commonsense* 100,
-                    "ARC Challenge accuracy": arc_challenge* 100})
+                    "ARC Challenge accuracy": arc_challenge* 100,
+                    "scheduler":"CosineAnnealingLR"})
     
     print(f"CommonsenseQA accuracy : {commonsense * 100:.2f}%")
     print(f"ARC Challenge accuracy : {arc_challenge * 100:.2f}%")
