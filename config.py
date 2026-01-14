@@ -12,13 +12,13 @@ class GPTConfig:
     
     # Training Hyperparameters
     batch_size = 8 #
-    learning_rate = 3e-4
+    learning_rate = 5e-5
     epochs = 1
     
     dataset_name = "HuggingFaceFW/fineweb-edu"
     dataset_subset = "CC-MAIN-2025-26"
     take_samples=100000
-    model_path="/scratch/prku/models/hyperparameter_tuning/wt_initialization"
+    model_path="/scratch/prku/models/hyperparameter_tuning/cosineannealing_with_wt_decay"
     if os.path.isdir(model_path):
         pass
     else :

@@ -86,9 +86,9 @@ def train():
     
     model = GPT(config)
     model=model.to(config.device)    
-    optimizer = torch.optim.AdamW(model.parameters(), lr=config.learning_rate)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=config.learning_rate,weight_decay=0.1)
     # scheduler = StepLR(optimizer, step_size=5000, gamma=0.5)
-    scheduler=CosineAnnealingLR(optimizer, T_max=1, eta_min=1e-7)
+    scheduler=CosineAnnealingLR(optimizer, T_max=1, eta_min=0)
     # 7. Training Loop
     model.train()
     logging.info(f"Starting training for {config.epochs} epochs on ~{config.take_samples} documents per epoch...")
@@ -187,7 +187,7 @@ def train():
     wandb.log({
                     "CommonsenseQA accuracy": commonsense* 100,
                     "ARC Challenge accuracy": arc_challenge* 100,
-                    "scheduler":"CosineAnnealingLR"})
+                    "scheduler":"CosineAnnealingLR with eta=0"})
     
     print(f"CommonsenseQA accuracy : {commonsense * 100:.2f}%")
     print(f"ARC Challenge accuracy : {arc_challenge * 100:.2f}%")
