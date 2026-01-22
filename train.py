@@ -14,6 +14,7 @@ import wandb
 from api_keys import wandb_api
 from torch.optim.lr_scheduler import StepLR,CosineAnnealingLR
 from evaluate import evaluate
+from torch.optim.lr_scheduler import LambdaLR
 
 config = GPTConfig()
 logging.basicConfig(
@@ -46,8 +47,7 @@ def train():
                 "context_length": config.block_size,
                 "device": config.device,
                 "dataset_source": "fine_web_edu_10T",
-                "num_of_rows": config.take_samples
-            }
+                "num_of_rows": config.take_samples}
         )
         logging.info("Weights and Biases tracking initialized.")
     except Exception as e:
@@ -86,9 +86,23 @@ def train():
     
     model = GPT(config)
     model=model.to(config.device)    
+    model=torch.compile(model)
     optimizer = torch.optim.AdamW(model.parameters(), lr=config.learning_rate,weight_decay=0.1)
     # scheduler = StepLR(optimizer, step_size=5000, gamma=0.5)
-    scheduler=CosineAnnealingLR(optimizer, T_max=1, eta_min=0)
+    # scheduler=CosineAnnealingLR(optimizer, T_max=1, eta_min=0)
+    # LR warmup with COsine anneaing
+    num_training_steps = config.epochs * (config.take_samples // config.batch_size)
+    num_warmup_steps = int(0.1 * num_training_steps) # 10% warmup is standard
+
+    def lr_lambda(current_step):
+        # 1. Linear Warmup
+        if current_step < num_warmup_steps:
+            return float(current_step) / float(max(1, num_warmup_steps))
+        # 2. Cosine Annealing
+        progress = float(current_step - num_warmup_steps) / float(max(1, num_training_steps - num_warmup_steps))
+        return max(0.0, 0.5 * (1.0 + math.cos(math.pi * progress)))
+    scheduler = LambdaLR(optimizer, lr_lambda)
+
     # 7. Training Loop
     model.train()
     logging.info(f"Starting training for {config.epochs} epochs on ~{config.take_samples} documents per epoch...")
@@ -112,7 +126,6 @@ def train():
 
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0) # Clip gradients to prevent spikes
             optimizer.step()
-            # scheduler.step()
             scheduler.step()
 
             current_loss = loss.item()
@@ -126,6 +139,7 @@ def train():
                     wandb.log({
                         "train/loss": total_loss / step,
                         "train/perplexity": math.exp(total_loss / step),
+                        "train/lr": scheduler.get_last_lr()[0],
                         "epoch": epoch
                     }, step=step)
 
