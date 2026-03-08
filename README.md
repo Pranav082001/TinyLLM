@@ -32,7 +32,7 @@ qa_results/
 └── arc_challenge_predictions.csv
 
 
-_______________________________________________
+---
 
 ## TruthfulQA Evaluation
 
