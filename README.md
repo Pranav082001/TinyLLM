@@ -10,10 +10,10 @@ This project explores training and evaluating a lightweight GPT-2–style langua
 
 The trained model is evaluated **without any fine-tuning** using likelihood-based multiple-choice scoring on:
 
-- **CommonsenseQA**
-- **ARC Challenge**
+* **CommonsenseQA**
+* **ARC Challenge**
 
-For each question, the model scores all answer options using the **length-normalized log-likelihood** under a causal language model.  
+For each question, the model scores all answer options using the **length-normalized log-likelihood** under a causal language model.
 The option with the highest score is selected as the prediction.
 
 ---
@@ -25,41 +25,42 @@ python evaluate_qa_zero_shot.py \
   --checkpoint checkpoint_epoch_1_step_25000_FIXED.pth \
   --output_dir qa_results \
   --device cuda
+```
 
+Generated files:
 
+```text
 qa_results/
 ├── commonsenseqa_predictions.csv
 └── arc_challenge_predictions.csv
-
-
----
+```
 
 ---
 
-### TruthfulQA Evaluation
+## TruthfulQA Evaluation
 
 The trained model is also evaluated **without any fine-tuning** on the **TruthfulQA multiple-choice benchmark**.
 
 For each question, the model scores:
 
-- one best **true** answer  
-- several additional **true** answers  
-- several **false** answers  
+* one best **true** answer
+* several additional **true** answers
+* several **false** answers
 
-Only answer tokens are scored under the causal language model, while question tokens are masked during scoring.  
+Only answer tokens are scored under the causal language model, while question tokens are masked during scoring.
 This ensures that only the answer likelihood contributes to the final score.
 
-#### Metrics
+### Metrics
 
 The evaluation reports three standard TruthfulQA multiple-choice metrics:
 
-- **MC1** – whether the best true answer is ranked above all false answers  
-- **MC2** – normalized probability mass assigned to all true answers  
-- **MC3** – fraction of true answers that score above the strongest false answer  
+* **MC1** — whether the best true answer is ranked above all false answers
+* **MC2** — normalized probability mass assigned to all true answers
+* **MC3** — fraction of true answers that score above the strongest false answer
 
 These metrics measure how consistently the model prefers truthful answers over plausible but misleading alternatives.
 
-#### Run TruthfulQA Evaluation
+### Run TruthfulQA Evaluation
 
 ```bash
 python TinyLLM_TruthfulQA_eval.py \
@@ -67,3 +68,10 @@ python TinyLLM_TruthfulQA_eval.py \
   --input_csv TruthfulQA.csv \
   --output_csv truthfulqa_results.csv \
   --device cuda
+```
+
+Generated file:
+
+```text
+truthfulqa_results.csv
+```
