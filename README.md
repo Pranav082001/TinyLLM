@@ -75,3 +75,57 @@ Generated file:
 ```text
 truthfulqa_results.csv
 ```
+
+### Run TruthfulQA Evaluation
+
+```bash
+python TinyLLM_TruthfulQA_eval.py \
+  --checkpoint checkpoint_epoch_1_step_25000_FIXED.pth \
+  --input_csv TruthfulQA.csv \
+  --output_csv truthfulqa_results.csv \
+  --device cuda
+```
+
+Generated file:
+
+```text
+truthfulqa_results.csv
+```
+
+---
+
+## Physical Interaction Question Answering (PIQA)
+
+The trained model is also evaluated **without any fine-tuning** on the **PIQA benchmark**, which tests whether a language model can distinguish between physically plausible and implausible solutions in everyday situations.
+
+For each example, the model receives:
+
+* one practical goal
+* two candidate solutions
+
+The model scores both candidate solutions and selects the one with the higher answer likelihood.
+
+Only answer tokens are scored under the causal language model, while prompt tokens are masked during scoring.
+
+### Metric
+
+The evaluation reports **accuracy** on the validation split:
+
+* **Accuracy** — proportion of examples where the higher-scoring solution matches the correct physical solution
+
+This measures whether the model prefers solutions that are physically reasonable in real-world situations.
+
+### Run PIQA Evaluation
+
+```bash
+python TinyLLM_PIQA_eval.py \
+  --checkpoint checkpoint_epoch_1_step_25000_FIXED.pth \
+  --output_csv piqa_results.csv \
+  --device cuda
+```
+
+Generated file:
+
+```text
+piqa_results.csv
+```
