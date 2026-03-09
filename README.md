@@ -101,6 +101,13 @@ This measures whether the model prefers solutions that are physically reasonable
 
 ### Run PIQA Evaluation
 
+Install the required dataset version first:
+
+```bash
+pip install datasets==3.6.0
+```
+Then run:
+
 ```bash
 python TinyLLM_PIQA_eval.py \
   --checkpoint checkpoint_epoch_1_step_25000_FIXED.pth \
