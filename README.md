@@ -37,8 +37,7 @@ qa_results/
 
 ---
 
-## TruthfulQA Evaluation
-https://arxiv.org/pdf/2109.07958
+## TruthfulQA Evaluation (https://arxiv.org/pdf/2109.07958)
 
 The trained model is also evaluated **without any fine-tuning** on the **TruthfulQA multiple-choice benchmark**.
 
@@ -79,8 +78,7 @@ truthfulqa_results.csv
 
 ---
 
-## Physical Interaction Question Answering (PIQA)
-https://arxiv.org/pdf/1911.11641
+## Physical Interaction Question Answering (PIQA) (https://arxiv.org/pdf/1911.11641)
 
 The trained model is also evaluated **without any fine-tuning** on the **PIQA benchmark**, which tests whether a language model can distinguish between physically plausible and implausible solutions in everyday situations.
 
