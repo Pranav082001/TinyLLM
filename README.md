@@ -76,22 +76,6 @@ Generated file:
 truthfulqa_results.csv
 ```
 
-### Run TruthfulQA Evaluation
-
-```bash
-python TinyLLM_TruthfulQA_eval.py \
-  --checkpoint checkpoint_epoch_1_step_25000_FIXED.pth \
-  --input_csv TruthfulQA.csv \
-  --output_csv truthfulqa_results.csv \
-  --device cuda
-```
-
-Generated file:
-
-```text
-truthfulqa_results.csv
-```
-
 ---
 
 ## Physical Interaction Question Answering (PIQA)
